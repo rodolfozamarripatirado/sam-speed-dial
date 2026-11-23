@@ -224,6 +224,69 @@ await check('el grupo existente se reutiliza sin duplicarse', async () => {
   assert.equal(body.entry.groupId, trabajos[0].id);
 });
 
+await check('los grupos se pueden reordenar y el orden persiste', async () => {
+  await call(env, '/api/entries', {
+    method: 'POST',
+    body: multipart({ title: 'Del segundo grupo', url: 'https://segundo.example.com', groupName: 'Segundo' }),
+  });
+
+  const { groups } = await fetchAll(env);
+  assert.ok(groups.length >= 2, 'hacen falta al menos dos grupos');
+
+  const second = groups[1];
+  const moved = await call(env, `/api/groups/${second.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ direction: 'up' }),
+  });
+  assert.equal(moved.status, 200);
+
+  const body = await moved.json();
+  assert.equal(body.groups[0].id, second.id, 'el grupo debe subir una posición');
+
+  const back = await call(env, `/api/groups/${second.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ direction: 'down' }),
+  });
+  assert.equal(back.status, 200);
+
+  const restored = await back.json();
+  assert.deepEqual(
+    restored.groups.map((group) => group.id),
+    groups.map((group) => group.id),
+    'volver a bajar debe restaurar el orden original',
+  );
+});
+
+await check('mover un grupo valida la dirección y el grupo', async () => {
+  const { groups } = await fetchAll(env);
+  const first = groups[0];
+
+  const invalid = await call(env, `/api/groups/${first.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ direction: 'left' }),
+  });
+  assert.equal(invalid.status, 400);
+
+  const missing = await call(env, '/api/groups/999999', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ direction: 'up' }),
+  });
+  assert.equal(missing.status, 404);
+
+  const edge = await call(env, `/api/groups/${first.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ direction: 'up' }),
+  });
+  assert.equal(edge.status, 200, 'el primer grupo subiendo no debe fallar');
+  const body = await edge.json();
+  assert.equal(body.groups[0].id, first.id, 'el orden no cambia en el extremo');
+});
+
 await check('se rechazan archivos que no son imágenes o son SVG', async () => {
   const svg = new File([new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"></svg>')], 'x.svg', {
     type: 'image/svg+xml',
