@@ -10,11 +10,13 @@ PoC del Speed Dial de SAM según `SAM-SD-001`. Implementa la rebanada mínima ac
 ## Qué incluye
 
 - **Tarjeta `+`** en la rejilla que abre un modal para dar de alta un acceso.
+- **La tarjeta es solo la imagen.** El título y el dominio no se pintan encima: aparecen en el tooltip al pasar el cursor (`title` + `aria-label`).
 - **Foto editable por tarjeta.** Cada tarjeta tiene dos acciones al pasar el cursor: `✎` abre el mismo modal en modo edición (título, URL, grupo y foto) y `×` borra. Si no hay foto se muestra un monograma.
-- La foto ocupa el marco completo con `object-fit: cover`: se recorta al tamaño de la tarjeta sin deformarse.
+- La foto cubre el **100% de la tarjeta** con `object-fit: cover`: se recorta al tamaño de la tarjeta sin deformarse ni dejar márgenes.
 - **Importación del export de Opera.** El botón «Importar bookmarks» lee el archivo `bookmarks_*.html` en el navegador, toma solo la carpeta `Speed Dials`, convierte cada subcarpeta en un grupo y usa el ícono incrustado en el export para generar la portada de cada tarjeta. Los accesos sin ícono reciben una portada generada con el dominio. Lo que ya existe no se duplica (se compara por URL), así que se puede relanzar para continuar o completar una importación.
 - Los archivos del export **no se suben**: solo se envía cada acceso y su portada. El archivo original no se modifica.
-- **Grupos.** La rejilla se muestra por secciones. Un grupo nuevo se crea escribiendo su nombre y los existentes se reutilizan sin duplicarse (sin distinguir mayúsculas).
+- **Grupos.** La rejilla se muestra por secciones. Un grupo nuevo se crea escribiendo su nombre y los existentes se reutilizan sin duplicarse (sin distinguir mayúsculas). Cada tarjeta se cambia de grupo desde `✎` (el selector «Grupo»), así que la cuadrícula se reacomoda sola.
+- **Orden de los grupos.** En el encabezado de cada grupo aparecen `↑` y `↓` al pasar el cursor: mueven la sección completa una posición, conservando la rejilla y el orden guardado en el servidor.
 - Validación de esquema `http://` / `https://`, longitud de campos, URLs sin credenciales y títulos sin caracteres de control.
 - Las imágenes se validan por **contenido** (firma del archivo), no por extensión ni por el tipo declarado: PNG, JPG, WEBP o GIF hasta 2 MB. SVG y cualquier otro formato se rechazan.
 - Si una imagen pesa más de 400 KB o supera 1200 px de lado, el navegador la reduce antes de subirla.
@@ -42,7 +44,7 @@ test/local.mjs     arnés que ejecuta el Worker contra SQLite en memoria + R2 si
 npm test
 ```
 
-21 comprobaciones con un shim mínimo de D1 y R2 sobre `node:sqlite`. Cubre: siembra inicial, alta válida, rechazo de `javascript:` / `data:` / `file:`, títulos vacíos, credenciales en la URL, cuerpo no-JSON, alta multipart con grupo e imagen, reutilización de grupos sin duplicar, rechazo de SVG y de archivos que mienten sobre su tipo, límite de 2 MB, imagen inexistente, borrado de la imagen junto con la tarjeta, `PATCH` que cambia título/URL/grupo y reemplaza la foto borrando la anterior, `PATCH` con `removeImage`, validación y `404` en `PATCH`, altas concurrentes con posiciones únicas, borrado persistente, reinicio sin duplicar datos, migración de una base con el esquema anterior y `503` genérico ante caída de la base.
+23 comprobaciones con un shim mínimo de D1 y R2 sobre `node:sqlite`. Cubre: siembra inicial, alta válida, rechazo de `javascript:` / `data:` / `file:`, títulos vacíos, credenciales en la URL, cuerpo no-JSON, alta multipart con grupo e imagen, reutilización de grupos sin duplicar, reordenar grupos arriba/abajo con el orden restaurado y validación de la dirección, rechazo de SVG y de archivos que mienten sobre su tipo, límite de 2 MB, imagen inexistente, borrado de la imagen junto con la tarjeta, `PATCH` que cambia título/URL/grupo y reemplaza la foto borrando la anterior, `PATCH` con `removeImage`, validación y `404` en `PATCH`, altas concurrentes con posiciones únicas, borrado persistente, reinicio sin duplicar datos, migración de una base con el esquema anterior y `503` genérico ante caída de la base.
 
 ## API
 
@@ -52,6 +54,7 @@ npm test
 | `POST` | `/api/entries` | `201 { entry, groups }`; `400` datos inválidos, `413` imagen demasiado grande, `415` formato no permitido |
 | `PATCH` | `/api/entries/:id` | `200 { entry, groups }`; `404` si no existe |
 | `DELETE` | `/api/entries/:id` | `204`, `404` si ya no existe |
+| `PATCH` | `/api/groups/:id` | `{ direction: "up" \| "down" }` → `200 { groups }`; `400` dirección inválida, `404` si no existe |
 | `GET` | `/api/images/:key` | imagen con `cache-control` largo y `content-type` verificado |
 
 Alta y edición aceptan JSON (`{ title, url, groupName, removeImage? }`) o `multipart/form-data` con `title`, `url`, `groupName`, `image` y `removeImage=1`.
@@ -79,4 +82,4 @@ Las dos filas de infraestructura son desviaciones conscientes respecto a la spec
 
 ## Fuera de alcance (diferido según la spec)
 
-Catálogo de propósito por sitio con evidencia, tooltip de tres segundos, mover/redimensionar tarjetas, animación de píxeles, reordenar y borrar grupos, y soporte de export de otros navegadores (solo se lee el formato de Opera/Chrome con carpeta `Speed Dials`). La agrupación, la foto editable y la importación se añadieron después de la revisión de la rebanada de una hora, así que quedan fuera de ese alcance acordado y de su aceptación.
+Catálogo de propósito por sitio con evidencia, tooltip de tres segundos con ficha del sitio, mover/redimensionar tarjetas, animación de píxeles, borrar o renombrar grupos y soporte de export de otros navegadores (solo se lee el formato de Opera/Chrome con carpeta `Speed Dials`). La agrupación, la foto editable, la importación y el reordenado de grupos se añadieron después de la revisión de la rebanada de una hora, así que quedan fuera de ese alcance acordado y de su aceptación.
