@@ -41,6 +41,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Fondo animado: un SVG pequeño que el navegador descarga la primera vez y
+   guarda en su caché local (el servidor lo marca por un año). */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: url("/fondo-v1.svg") center / cover no-repeat;
+  pointer-events: none;
+}
+
 .wrap {
   width: min(1080px, 100% - 2.5rem);
   margin-inline: auto;
@@ -917,6 +928,10 @@ select:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;
+  }
+
+  body::before {
+    background-image: none;
   }
 
   .tile-link:hover,
