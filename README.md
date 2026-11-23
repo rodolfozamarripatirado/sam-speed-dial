@@ -20,6 +20,7 @@ PoC del Speed Dial de SAM según `SAM-SD-001`. Implementa la rebanada mínima ac
 - **Tamaño por tarjeta.** En `✎` se elige normal (1 columna), ancha (2 columnas) o grande (2 × 2). El tamaño se guarda y la cuadrícula se reacomoda sola; en pantallas angostas las tarjetas anchas vuelven a una columna.
 - **Posición por tarjeta.** En `✎`, «← Mover antes» y «Mover después →» cambian la tarjeta de lugar dentro de su grupo (o dentro de la tarjeta agrupada) sin cerrar el modal.
 - **Orden de los grupos.** En el encabezado de cada grupo aparecen `↑` y `↓` al pasar el cursor: mueven la sección completa una posición, conservando la rejilla y el orden guardado en el servidor.
+- **Fondo animado.** Un SVG pequeño (`public/fondo-v1.svg`) con auras que se desplazan y estrellas que titilan. El servidor lo entrega con caché de un año, así que el navegador lo descarga la primera vez y después usa su copia local, sin volver a bajarlo. Con «reducir movimiento» activado en el sistema no se muestra.
 - Validación de esquema `http://` / `https://`, longitud de campos, URLs sin credenciales y títulos sin caracteres de control.
 - Las imágenes se validan por **contenido** (firma del archivo), no por extensión ni por el tipo declarado: PNG, JPG, WEBP o GIF hasta 2 MB. SVG y cualquier otro formato se rechazan.
 - Si una imagen pesa más de 400 KB o supera 1200 px de lado, el navegador la reduce antes de subirla.
@@ -37,6 +38,7 @@ worker.js          API + esquema/migración (D1) y almacenamiento de imágenes (
 public/index.html  página, modal y botón de importación
 public/app.js      render, edición, generación de portadas y parser del export
 public/styles.css  estilos
+public/fondo-v1.svg fondo animado que el navegador descarga una vez
 manifest.json      manifiesto de despliegue del Worker con assets estáticos
 test/local.mjs     arnés que ejecuta el Worker contra SQLite en memoria + R2 simulado
 ```
