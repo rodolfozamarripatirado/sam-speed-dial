@@ -261,6 +261,31 @@ async function listGroups(env) {
   return (results ?? []).map(toGroup);
 }
 
+/**
+ * Reordena un grupo una posición arriba o abajo. Vuelve a numerar todas las
+ * posiciones para que el orden quede estable y sin huecos.
+ */
+async function moveGroup(env, id, direction) {
+  const { results } = await env.DB
+    .prepare('SELECT id FROM entry_groups ORDER BY position ASC, id ASC')
+    .all();
+
+  const ids = (results ?? []).map((row) => Number(row.id));
+  const index = ids.indexOf(id);
+  if (index === -1) throw new HttpError(404, 'Ese grupo ya no existe.');
+
+  const target = direction === 'up' ? index - 1 : index + 1;
+  if (target < 0 || target >= ids.length) return;
+
+  [ids[index], ids[target]] = [ids[target], ids[index]];
+
+  await env.DB.batch(
+    ids.map((groupId, position) =>
+      env.DB.prepare('UPDATE entry_groups SET position = ? WHERE id = ?').bind(position + 1, groupId),
+    ),
+  );
+}
+
 async function listEntries(env) {
   const { results } = await env.DB
     .prepare(
@@ -482,6 +507,28 @@ async function handleApi(request, env, path) {
       throw new HttpError(405, 'Método no permitido.');
     }
     return serveImage(env, imageMatch[1]);
+  }
+
+  const groupMatch = path.match(/^\/api\/groups\/([1-9][0-9]{0,17})$/);
+  if (groupMatch) {
+    if (request.method !== 'PATCH' && request.method !== 'PUT') {
+      throw new HttpError(405, 'Método no permitido.');
+    }
+
+    let payload;
+    try {
+      payload = await request.json();
+    } catch {
+      throw new HttpError(400, 'El cuerpo de la petición no es JSON válido.');
+    }
+
+    const direction = payload?.direction;
+    if (direction !== 'up' && direction !== 'down') {
+      throw new HttpError(400, "Indica la dirección: 'up' o 'down'.");
+    }
+
+    await moveGroup(env, Number(groupMatch[1]), direction);
+    return jsonResponse({ groups: await listGroups(env) });
   }
 
   const match = path.match(/^\/api\/entries\/([1-9][0-9]{0,17})$/);
