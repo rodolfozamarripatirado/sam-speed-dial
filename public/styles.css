@@ -103,7 +103,8 @@ h1 {
   align-items: center;
   justify-content: center;
   gap: 0.55rem;
-  min-height: 200px;
+  aspect-ratio: 4 / 3;
+  min-height: 140px;
   padding: 1.1rem;
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius);
@@ -148,12 +149,12 @@ h1 {
   position: relative;
 }
 
+/* La tarjeta es solo la imagen: sin padding ni textos, la foto llena el 100%. */
 .tile-link {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
+  display: block;
   height: 100%;
-  padding: 0.85rem 0.85rem 1rem;
+  padding: 0;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--panel);
@@ -180,9 +181,10 @@ h1 {
   display: grid;
   place-items: center;
   width: 100%;
+  height: 100%;
   aspect-ratio: 4 / 3;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: inherit;
   background: rgba(9, 13, 24, 0.5);
 }
 
@@ -200,7 +202,7 @@ h1 {
   width: 100%;
   height: 100%;
   color: #0b1324;
-  font-size: 1.6rem;
+  font-size: 2.1rem;
   font-weight: 750;
 }
 
@@ -226,21 +228,6 @@ h1 {
 
 .tone-5 {
   background: #8fe3ff;
-}
-
-.tile-title {
-  font-size: 0.95rem;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.tile-host {
-  margin-top: auto;
-  font-size: 0.76rem;
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .tile-actions {
@@ -310,7 +297,7 @@ h1 {
 
 .group-title {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.6rem;
   margin: 0 0 0.9rem;
   font-size: 0.82rem;
@@ -318,6 +305,55 @@ h1 {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+.group-actions {
+  display: flex;
+  gap: 0.3rem;
+  margin-left: 0.2rem;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+
+.group-title:hover .group-actions,
+.group-title:focus-within .group-actions {
+  opacity: 1;
+}
+
+.group-move {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.group-move:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.group-move:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.group-move:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (hover: none) {
+  .group-actions {
+    opacity: 1;
+  }
 }
 
 .group-count {
@@ -594,7 +630,7 @@ select:focus-visible {
   }
 
   .tile-add {
-    min-height: 170px;
+    min-height: 120px;
   }
 
   .modal-actions {
