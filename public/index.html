@@ -34,11 +34,24 @@
           <h2 id="entries-heading">Accesos</h2>
           <div class="head-actions">
             <span id="count" class="count"></span>
+            <button type="button" class="btn-ghost btn-small" id="group-mode" aria-pressed="false">
+              Agrupar tarjetas
+            </button>
             <button type="button" class="btn-ghost btn-small" id="import-bookmarks">Importar bookmarks</button>
             <input id="import-file" type="file" accept=".html,text/html" hidden />
           </div>
         </div>
         <p id="import-status" class="status" role="status" aria-live="polite"></p>
+
+        <div id="selection-bar" class="selection-bar" hidden>
+          <span id="selection-count" class="count">0 tarjetas elegidas</span>
+          <div class="selection-actions">
+            <button type="button" class="btn-primary btn-small" id="selection-create" disabled>
+              Crear tarjeta agrupada
+            </button>
+            <button type="button" class="btn-ghost btn-small" id="selection-cancel">Cancelar</button>
+          </div>
+        </div>
 
         <div class="add-grid">
           <button type="button" class="tile-add" id="open-add">
@@ -74,7 +87,7 @@
 
         <div class="modal-body">
           <div class="field">
-            <label for="title">Título</label>
+            <label for="title" id="title-label">Título</label>
             <input
               id="title"
               name="title"
@@ -86,7 +99,7 @@
             />
           </div>
 
-          <div class="field">
+          <div class="field" id="field-url">
             <label for="url">URL</label>
             <input
               id="url"
@@ -117,7 +130,26 @@
             />
           </div>
 
-          <div class="field">
+          <div class="field" id="field-size">
+            <label for="size">Tamaño de la tarjeta</label>
+            <select id="size" name="size">
+              <option value="normal">Normal (1 columna)</option>
+              <option value="wide">Ancha (2 columnas)</option>
+              <option value="big">Grande (2 × 2)</option>
+            </select>
+            <p class="hint">Se reacomoda sola dentro de la cuadrícula, sin dejar huecos.</p>
+          </div>
+
+          <div class="field" id="field-position" hidden>
+            <label>Posición</label>
+            <div class="position-row">
+              <button type="button" class="btn-ghost btn-small" id="move-before">← Mover antes</button>
+              <button type="button" class="btn-ghost btn-small" id="move-after">Mover después →</button>
+            </div>
+            <p class="hint">Se aplica al instante, sin cerrar esta ventana.</p>
+          </div>
+
+          <div class="field" id="field-image">
             <label for="image">Imagen (opcional)</label>
             <input id="image" name="image" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
             <div class="image-preview" id="image-preview" hidden>
@@ -136,6 +168,58 @@
           <button type="submit" class="btn-primary" id="submit-entry">Guardar</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="group-dialog" class="modal" aria-labelledby="group-dialog-title">
+      <form id="group-dialog-form" novalidate>
+        <div class="modal-head">
+          <h2 id="group-dialog-title">Crear tarjeta agrupada</h2>
+          <button type="button" class="modal-close" id="close-group-dialog" aria-label="Cerrar">×</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="field">
+            <label for="group-dialog-name">Nombre de la tarjeta</label>
+            <input
+              id="group-dialog-name"
+              type="text"
+              maxlength="120"
+              autocomplete="off"
+              placeholder="Ej. Educación"
+              required
+            />
+          </div>
+          <p id="group-dialog-hint" class="hint"></p>
+          <p class="hint">
+            Al abrirla verás todas las tarjetas que elijas adentro. Con el botón × se deshace y cada tarjeta vuelve
+            a su lugar.
+          </p>
+        </div>
+
+        <p id="group-dialog-status" class="status" role="status" aria-live="polite"></p>
+
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" id="cancel-group-dialog">Cancelar</button>
+          <button type="submit" class="btn-primary" id="group-dialog-submit">Agrupar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="folder-dialog" class="modal modal-folder" aria-labelledby="folder-title">
+      <div class="folder-shell">
+        <div class="modal-head">
+          <div class="folder-head-text">
+            <h2 id="folder-title">Tarjeta agrupada</h2>
+            <p id="folder-subtitle" class="hint"></p>
+          </div>
+          <div class="folder-head-actions">
+            <button type="button" class="btn-ghost btn-small" id="folder-edit">Editar</button>
+            <button type="button" class="modal-close" id="close-folder" aria-label="Cerrar">×</button>
+          </div>
+        </div>
+        <ul id="folder-grid" class="grid folder-grid"></ul>
+        <p id="folder-empty" class="hint folder-empty" hidden>Esta tarjeta agrupada no tiene accesos.</p>
+      </div>
     </dialog>
 
     <script src="/app.js" type="module"></script>
