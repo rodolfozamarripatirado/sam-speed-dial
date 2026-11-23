@@ -6,13 +6,20 @@ const submitButton = document.getElementById('submit-entry');
 const closeButton = document.getElementById('close-add');
 const cancelButton = document.getElementById('cancel-add');
 const titleInput = document.getElementById('title');
+const titleLabel = document.getElementById('title-label');
 const urlInput = document.getElementById('url');
+const fieldUrl = document.getElementById('field-url');
+const fieldImage = document.getElementById('field-image');
+const fieldPosition = document.getElementById('field-position');
 const groupSelect = document.getElementById('group-select');
 const groupNameInput = document.getElementById('group-name');
 const imageInput = document.getElementById('image');
 const imagePreview = document.getElementById('image-preview');
 const imagePreviewImg = document.getElementById('image-preview-img');
 const clearImageButton = document.getElementById('clear-image');
+const sizeSelect = document.getElementById('size');
+const moveBeforeButton = document.getElementById('move-before');
+const moveAfterButton = document.getElementById('move-after');
 const modalStatus = document.getElementById('modal-status');
 const sections = document.getElementById('sections');
 const emptyState = document.getElementById('empty');
@@ -21,6 +28,26 @@ const countEl = document.getElementById('count');
 const importButton = document.getElementById('import-bookmarks');
 const importFile = document.getElementById('import-file');
 const importStatus = document.getElementById('import-status');
+const groupModeButton = document.getElementById('group-mode');
+const selectionBar = document.getElementById('selection-bar');
+const selectionCount = document.getElementById('selection-count');
+const selectionCreate = document.getElementById('selection-create');
+const selectionCancel = document.getElementById('selection-cancel');
+const groupDialog = document.getElementById('group-dialog');
+const groupDialogForm = document.getElementById('group-dialog-form');
+const groupDialogHint = document.getElementById('group-dialog-hint');
+const groupDialogName = document.getElementById('group-dialog-name');
+const groupDialogStatus = document.getElementById('group-dialog-status');
+const groupDialogSubmit = document.getElementById('group-dialog-submit');
+const closeGroupDialog = document.getElementById('close-group-dialog');
+const cancelGroupDialog = document.getElementById('cancel-group-dialog');
+const folderDialog = document.getElementById('folder-dialog');
+const folderTitle = document.getElementById('folder-title');
+const folderSubtitle = document.getElementById('folder-subtitle');
+const folderGrid = document.getElementById('folder-grid');
+const folderEmpty = document.getElementById('folder-empty');
+const folderEditButton = document.getElementById('folder-edit');
+const closeFolderButton = document.getElementById('close-folder');
 
 const NEW_GROUP_VALUE = '__new';
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -30,10 +57,15 @@ let entries = [];
 let groups = [];
 
 let editingId = null;
+let editingFolder = false;
 let existingImageUrl = null;
 let removeImage = false;
 let previewObjectUrl = null;
 let importing = false;
+
+let selecting = false;
+const selected = new Set();
+let openFolderId = null;
 
 function setStatus(element, message, kind = '') {
   element.textContent = message;
@@ -61,16 +93,75 @@ function toneFor(value) {
 }
 
 function monogram(title) {
-  const first = Array.from(title.trim())[0] ?? '?';
+  const first = Array.from((title || '').trim())[0] ?? '?';
   return first.toUpperCase();
 }
 
-function buildTile(entry) {
+function sortedEntries() {
+  return [...entries].sort((a, b) => a.position - b.position || a.id - b.id);
+}
+
+function childrenOf(parentId) {
+  return sortedEntries().filter((entry) => entry.parentId === parentId);
+}
+
+function entryById(id) {
+  return entries.find((entry) => entry.id === Number(id)) || null;
+}
+
+function sizeToKey(span) {
+  const value = Number(span) || 1;
+  if (value === 2) return 'wide';
+  if (value === 3) return 'big';
+  return 'normal';
+}
+
+function applySize(item, span) {
+  const key = sizeToKey(span);
+  if (key === 'wide') item.classList.add('size-wide');
+  if (key === 'big') item.classList.add('size-big');
+}
+
+function buildIcon(title, host) {
+  const icon = document.createElement('span');
+  icon.className = `tile-icon tone-${toneFor(host)}`;
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = monogram(title);
+  return icon;
+}
+
+function buildActions(entry) {
+  const actions = document.createElement('div');
+  actions.className = 'tile-actions';
+
+  const edit = document.createElement('button');
+  edit.type = 'button';
+  edit.className = 'tile-action';
+  edit.textContent = '✎';
+  edit.setAttribute(
+    'aria-label',
+    entry.isFolder ? `Editar la tarjeta agrupada ${entry.title}` : `Editar ${entry.title} y su imagen`,
+  );
+  edit.addEventListener('click', () => openEdit(entry));
+
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'tile-action tile-delete';
+  remove.textContent = '×';
+  remove.setAttribute('aria-label', entry.isFolder ? `Deshacer la agrupación ${entry.title}` : `Eliminar ${entry.title}`);
+  remove.addEventListener('click', () => removeEntry(entry));
+
+  actions.append(edit, remove);
+  return actions;
+}
+
+function buildEntryTile(entry) {
   const host = hostOf(entry.url);
 
   const item = document.createElement('li');
   item.className = 'tile';
   item.dataset.id = String(entry.id);
+  applySize(item, entry.span);
 
   const link = document.createElement('a');
   link.className = 'tile-link';
@@ -94,35 +185,76 @@ function buildTile(entry) {
     photo.decoding = 'async';
     media.append(photo);
   } else {
-    const icon = document.createElement('span');
-    icon.className = `tile-icon tone-${toneFor(host)}`;
-    icon.setAttribute('aria-hidden', 'true');
-    icon.textContent = monogram(entry.title);
-    media.append(icon);
+    media.append(buildIcon(entry.title, host));
   }
 
   link.append(media);
-
-  const actions = document.createElement('div');
-  actions.className = 'tile-actions';
-
-  const edit = document.createElement('button');
-  edit.type = 'button';
-  edit.className = 'tile-action';
-  edit.textContent = '✎';
-  edit.setAttribute('aria-label', `Editar ${entry.title} y su imagen`);
-  edit.addEventListener('click', () => openEdit(entry));
-
-  const remove = document.createElement('button');
-  remove.type = 'button';
-  remove.className = 'tile-action tile-delete';
-  remove.textContent = '×';
-  remove.setAttribute('aria-label', `Eliminar ${entry.title}`);
-  remove.addEventListener('click', () => removeEntry(entry));
-
-  actions.append(edit, remove);
-  item.append(link, actions);
+  item.append(link, buildActions(entry));
   return item;
+}
+
+/**
+ * Tarjeta agrupada: una sola tarjeta que muestra una mezcla de las fotos de
+ * las tarjetas que lleva dentro y, al pulsarla, abre su contenido en un modal.
+ */
+function buildFolderTile(folder) {
+  const children = childrenOf(folder.id);
+  const count = children.length;
+
+  const item = document.createElement('li');
+  item.className = 'tile tile-folder-wrap';
+  item.dataset.id = String(folder.id);
+  applySize(item, folder.span);
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'tile-link tile-folder';
+  button.title = `${folder.title} — ${count === 1 ? '1 acceso' : `${count} accesos`} adentro`;
+  button.setAttribute(
+    'aria-label',
+    `${folder.title}: tarjeta agrupada con ${count === 1 ? '1 acceso' : `${count} accesos`}`,
+  );
+  button.setAttribute('aria-haspopup', 'dialog');
+  button.addEventListener('click', () => openFolder(folder));
+
+  const media = document.createElement('span');
+  media.className = 'tile-media';
+
+  const collage = document.createElement('span');
+  collage.className = 'collage';
+  collage.dataset.count = String(Math.min(4, Math.max(1, count)));
+
+  for (const child of children.slice(0, 4)) {
+    const cell = document.createElement('span');
+    cell.className = 'collage-cell';
+    if (child.imageUrl) {
+      const photo = document.createElement('img');
+      photo.src = child.imageUrl;
+      photo.alt = '';
+      photo.loading = 'lazy';
+      photo.decoding = 'async';
+      cell.append(photo);
+    } else {
+      cell.append(buildIcon(child.title, hostOf(child.url)));
+    }
+    collage.append(cell);
+  }
+
+  media.append(collage);
+
+  const badge = document.createElement('span');
+  badge.className = 'tile-badge';
+  badge.textContent = String(count);
+  badge.setAttribute('aria-hidden', 'true');
+  media.append(badge);
+
+  button.append(media);
+  item.append(button, buildActions(folder));
+  return item;
+}
+
+function buildTile(entry) {
+  return entry.isFolder ? buildFolderTile(entry) : buildEntryTile(entry);
 }
 
 function buildSection(group, items, { isFirst = false, isLast = false } = {}) {
@@ -139,7 +271,7 @@ function buildSection(group, items, { isFirst = false, isLast = false } = {}) {
 
     const total = document.createElement('span');
     total.className = 'group-count';
-    total.textContent = items.length === 1 ? '1 acceso' : `${items.length} accesos`;
+    total.textContent = items.length === 1 ? '1 tarjeta' : `${items.length} tarjetas`;
 
     const actions = document.createElement('span');
     actions.className = 'group-actions';
@@ -177,11 +309,12 @@ function buildSection(group, items, { isFirst = false, isLast = false } = {}) {
 }
 
 function render() {
-  const sortedEntries = [...entries].sort((a, b) => a.position - b.position || a.id - b.id);
+  const ordered = sortedEntries();
+  const topLevel = ordered.filter((entry) => entry.parentId === null || entry.parentId === undefined);
   const grouped = new Map();
   const ungrouped = [];
 
-  for (const entry of sortedEntries) {
+  for (const entry of topLevel) {
     if (entry.groupId === null || entry.groupId === undefined) {
       ungrouped.push(entry);
       continue;
@@ -207,8 +340,13 @@ function render() {
   });
 
   sections.replaceChildren(...blocks);
-  emptyState.hidden = sortedEntries.length > 0;
-  countEl.textContent = sortedEntries.length === 1 ? '1 acceso' : `${sortedEntries.length} accesos`;
+  emptyState.hidden = ordered.length > 0;
+
+  const total = ordered.filter((entry) => !entry.isFolder).length;
+  countEl.textContent = total === 1 ? '1 acceso' : `${total} accesos`;
+
+  if (selecting) syncSelection();
+  refreshFolderModal();
 }
 
 async function loadEntries() {
@@ -228,15 +366,17 @@ async function loadEntries() {
 }
 
 async function removeEntry(entry) {
-  if (!window.confirm(`¿Eliminar "${entry.title}"?`)) return;
+  const message = entry.isFolder
+    ? `¿Deshacer "${entry.title}"?\n\nSus ${childrenOf(entry.id).length} tarjetas volverán a su grupo.`
+    : `¿Eliminar "${entry.title}"?`;
+  if (!window.confirm(message)) return;
 
   try {
     const response = await fetch(`/api/entries/${encodeURIComponent(entry.id)}`, { method: 'DELETE' });
     if (!response.ok && response.status !== 404) throw new Error('no se pudo eliminar');
-    entries = entries.filter((item) => item.id !== entry.id);
-    render();
+    await loadEntries();
   } catch {
-    window.alert('No se pudo eliminar el acceso. Intenta de nuevo.');
+    window.alert('No se pudo completar la acción. Intenta de nuevo.');
   }
 }
 
@@ -258,6 +398,104 @@ async function moveGroup(group, direction) {
   } catch {
     window.alert('No se pudo mover el grupo. Intenta de nuevo.');
   }
+}
+
+async function moveEntry(entry, direction) {
+  try {
+    const response = await fetch(`/api/entries/${encodeURIComponent(entry.id)}/move`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ direction }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !Array.isArray(data.entries)) {
+      throw new Error('no se pudo mover la tarjeta');
+    }
+
+    entries = data.entries;
+    render();
+  } catch {
+    window.alert('No se pudo mover la tarjeta. Intenta de nuevo.');
+  }
+}
+
+/* Modo agrupar */
+
+function syncSelection() {
+  const total = selected.size;
+  selectionCount.textContent = total === 1 ? '1 tarjeta elegida' : `${total} tarjetas elegidas`;
+  selectionCreate.disabled = total < 2;
+  selectionCreate.textContent = total >= 2 ? `Crear tarjeta con ${total}` : 'Crear tarjeta agrupada';
+
+  for (const item of sections.querySelectorAll('.tile')) {
+    const id = Number(item.dataset.id);
+    item.classList.toggle('is-selected', selected.has(id));
+  }
+}
+
+function setSelecting(value) {
+  selecting = value;
+  document.body.classList.toggle('is-selecting', value);
+  selectionBar.hidden = !value;
+  groupModeButton.textContent = value ? 'Salir de agrupar' : 'Agrupar tarjetas';
+  groupModeButton.setAttribute('aria-pressed', String(value));
+  if (!value) {
+    selected.clear();
+    for (const item of sections.querySelectorAll('.tile')) item.classList.remove('is-selected');
+  }
+  syncSelection();
+}
+
+function openGroupDialog() {
+  if (selected.size < 2) return;
+
+  groupDialogForm.reset();
+  setStatus(groupDialogStatus, '');
+
+  const ids = orderedSelectedIds();
+  const first = entryById(ids[0]);
+  const group =
+    first && first.groupId !== null && first.groupId !== undefined
+      ? groups.find((item) => item.id === first.groupId)
+      : null;
+
+  groupDialogHint.textContent = group
+    ? `Se guardará en el grupo «${group.name}», el de la primera tarjeta elegida.`
+    : 'Se guardará sin grupo, arriba del todo.';
+
+  openModal(groupDialog);
+  groupDialogName.focus();
+}
+
+function orderedSelectedIds() {
+  return sortedEntries()
+    .filter((entry) => selected.has(entry.id))
+    .map((entry) => entry.id);
+}
+
+function openFolder(folder) {
+  if (selecting) return;
+  openFolderId = folder.id;
+  openModal(folderDialog);
+  refreshFolderModal();
+}
+
+function refreshFolderModal() {
+  if (!folderDialog.open) return;
+
+  const folder = openFolderId ? entryById(openFolderId) : null;
+  if (!folder || !folder.isFolder) {
+    closeModal(folderDialog);
+    openFolderId = null;
+    return;
+  }
+
+  const children = childrenOf(folder.id);
+  folderTitle.textContent = folder.title;
+  folderSubtitle.textContent = children.length === 1 ? '1 acceso adentro' : `${children.length} accesos adentro`;
+  folderGrid.replaceChildren(...children.map(buildEntryTile));
+  folderEmpty.hidden = children.length > 0;
 }
 
 /* Imagen: vista previa y estado */
@@ -310,7 +548,25 @@ function clearImage() {
   updatePreview();
 }
 
-/* Modal */
+/* Modales */
+
+function openModal(element) {
+  if (element.open) return;
+  if (typeof element.showModal === 'function') {
+    element.showModal();
+  } else {
+    element.setAttribute('open', '');
+  }
+}
+
+function closeModal(element) {
+  if (!element.open && !element.hasAttribute('open')) return;
+  if (typeof element.close === 'function') {
+    element.close();
+  } else {
+    element.removeAttribute('open');
+  }
+}
 
 function populateGroups(selectedId = '') {
   groupSelect.replaceChildren();
@@ -336,22 +592,11 @@ function populateGroups(selectedId = '') {
   groupNameInput.hidden = groupSelect.value !== NEW_GROUP_VALUE;
 }
 
-function showDialog() {
-  if (typeof dialog.showModal === 'function') {
-    dialog.showModal();
-  } else {
-    dialog.setAttribute('open', '');
-  }
-}
-
-function closeDialog() {
+function closeEntryDialog() {
   resetImageState();
   editingId = null;
-  if (typeof dialog.close === 'function') {
-    dialog.close();
-  } else {
-    dialog.removeAttribute('open');
-  }
+  editingFolder = false;
+  closeModal(dialog);
 }
 
 function openCreate() {
@@ -361,9 +606,16 @@ function openCreate() {
   populateGroups();
   groupNameInput.value = '';
   editingId = null;
+  editingFolder = false;
+  titleLabel.textContent = 'Título';
+  titleInput.placeholder = 'Ej. Panel de SAM';
+  fieldUrl.hidden = false;
+  fieldImage.hidden = false;
+  fieldPosition.hidden = true;
+  sizeSelect.value = 'normal';
   modalTitle.textContent = 'Nuevo acceso';
   submitButton.textContent = 'Guardar';
-  showDialog();
+  openModal(dialog);
   titleInput.focus();
 }
 
@@ -374,13 +626,20 @@ function openEdit(entry) {
   populateGroups(entry.groupId === null || entry.groupId === undefined ? '' : String(entry.groupId));
   groupNameInput.value = '';
   editingId = entry.id;
+  editingFolder = Boolean(entry.isFolder);
   existingImageUrl = entry.imageUrl || null;
   titleInput.value = entry.title;
-  urlInput.value = entry.url;
+  urlInput.value = entry.url || '';
+  sizeSelect.value = sizeToKey(entry.span);
+  titleLabel.textContent = editingFolder ? 'Nombre de la tarjeta agrupada' : 'Título';
+  titleInput.placeholder = editingFolder ? 'Ej. Educación' : 'Ej. Panel de SAM';
+  fieldUrl.hidden = editingFolder;
+  fieldImage.hidden = editingFolder;
+  fieldPosition.hidden = false;
   updatePreview();
-  modalTitle.textContent = 'Editar acceso';
+  modalTitle.textContent = editingFolder ? 'Editar tarjeta agrupada' : 'Editar acceso';
   submitButton.textContent = 'Guardar cambios';
-  showDialog();
+  openModal(dialog);
   titleInput.focus();
 }
 
@@ -691,11 +950,11 @@ async function runImport(text) {
 /* Eventos */
 
 openAddButton.addEventListener('click', openCreate);
-closeButton.addEventListener('click', closeDialog);
-cancelButton.addEventListener('click', closeDialog);
+closeButton.addEventListener('click', closeEntryDialog);
+cancelButton.addEventListener('click', closeEntryDialog);
 
 dialog.addEventListener('click', (event) => {
-  if (event.target === dialog) closeDialog();
+  if (event.target === dialog) closeEntryDialog();
 });
 
 groupSelect.addEventListener('change', () => {
@@ -709,6 +968,87 @@ imageInput.addEventListener('change', () => {
 });
 
 clearImageButton.addEventListener('click', clearImage);
+
+moveBeforeButton.addEventListener('click', () => {
+  const entry = entryById(editingId);
+  if (entry) moveEntry(entry, 'up');
+});
+
+moveAfterButton.addEventListener('click', () => {
+  const entry = entryById(editingId);
+  if (entry) moveEntry(entry, 'down');
+});
+
+groupModeButton.addEventListener('click', () => setSelecting(!selecting));
+selectionCancel.addEventListener('click', () => setSelecting(false));
+selectionCreate.addEventListener('click', openGroupDialog);
+
+sections.addEventListener('click', (event) => {
+  if (!selecting) return;
+  const item = event.target.closest('.tile');
+  if (!item || item.classList.contains('tile-folder-wrap')) return;
+  event.preventDefault();
+
+  const id = Number(item.dataset.id);
+  if (selected.has(id)) selected.delete(id);
+  else selected.add(id);
+  syncSelection();
+});
+
+groupDialogForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  const name = groupDialogName.value.trim();
+  if (!name) {
+    setStatus(groupDialogStatus, 'Escribe un nombre para la tarjeta agrupada.', 'error');
+    groupDialogName.focus();
+    return;
+  }
+
+  groupDialogSubmit.disabled = true;
+  setStatus(groupDialogStatus, 'Agrupando…');
+
+  try {
+    const response = await fetch('/api/folders', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name, entryIds: orderedSelectedIds() }),
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setStatus(groupDialogStatus, data.message ?? 'No se pudo agrupar las tarjetas.', 'error');
+      return;
+    }
+
+    closeModal(groupDialog);
+    setSelecting(false);
+    await loadEntries();
+  } catch {
+    setStatus(groupDialogStatus, 'No se pudo agrupar. Revisa tu conexión.', 'error');
+  } finally {
+    groupDialogSubmit.disabled = false;
+  }
+});
+
+closeGroupDialog.addEventListener('click', () => closeModal(groupDialog));
+cancelGroupDialog.addEventListener('click', () => closeModal(groupDialog));
+groupDialog.addEventListener('click', (event) => {
+  if (event.target === groupDialog) closeModal(groupDialog);
+});
+
+closeFolderButton.addEventListener('click', () => closeModal(folderDialog));
+folderDialog.addEventListener('click', (event) => {
+  if (event.target === folderDialog) closeModal(folderDialog);
+});
+folderDialog.addEventListener('close', () => {
+  openFolderId = null;
+});
+
+folderEditButton.addEventListener('click', () => {
+  const folder = openFolderId ? entryById(openFolderId) : null;
+  if (folder) openEdit(folder);
+});
 
 importButton.addEventListener('click', () => {
   if (!importing) importFile.click();
@@ -727,9 +1067,15 @@ form.addEventListener('submit', async (event) => {
   const title = titleInput.value.trim();
   const url = urlInput.value.trim();
 
-  if (!title || !url) {
-    setStatus(modalStatus, 'Completa el título y la URL para guardar el acceso.', 'error');
-    (title ? urlInput : titleInput).focus();
+  if (!title) {
+    setStatus(modalStatus, editingFolder ? 'Escribe un nombre para la tarjeta agrupada.' : 'Completa el título.', 'error');
+    titleInput.focus();
+    return;
+  }
+
+  if (!editingFolder && !url) {
+    setStatus(modalStatus, 'Completa la URL para guardar el acceso.', 'error');
+    urlInput.focus();
     return;
   }
 
@@ -746,11 +1092,30 @@ form.addEventListener('submit', async (event) => {
     groupName = group ? group.name : '';
   }
 
-  const chosen = imageInput.files?.[0] ?? null;
   submitButton.disabled = true;
   setStatus(modalStatus, 'Guardando…');
 
   try {
+    if (editingFolder) {
+      const body = new FormData();
+      body.set('name', title);
+      body.set('groupName', groupName);
+      body.set('size', sizeSelect.value);
+
+      const response = await fetch(`/api/folders/${encodeURIComponent(editingId)}`, { method: 'PATCH', body });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.folder) {
+        setStatus(modalStatus, data.message ?? 'No se pudo guardar la tarjeta agrupada.', 'error');
+        return;
+      }
+
+      closeEntryDialog();
+      await loadEntries();
+      return;
+    }
+
+    const chosen = imageInput.files?.[0] ?? null;
     const prepared = chosen ? await shrinkImage(chosen) : null;
     if (prepared && prepared.size > MAX_IMAGE_BYTES) {
       setStatus(modalStatus, 'La imagen supera los 2 MB. Elige una más ligera.', 'error');
@@ -761,6 +1126,7 @@ form.addEventListener('submit', async (event) => {
     body.set('title', title);
     body.set('url', url);
     body.set('groupName', groupName);
+    body.set('size', sizeSelect.value);
     if (prepared) {
       body.set('image', prepared, prepared.name || 'imagen');
     } else if (removeImage) {
@@ -781,13 +1147,13 @@ form.addEventListener('submit', async (event) => {
       entries = entries.map((item) => (item.id === data.entry.id ? data.entry : item));
       groups = Array.isArray(data.groups) ? data.groups : groups;
       render();
-      closeDialog();
+      closeEntryDialog();
     } else {
-      closeDialog();
+      closeEntryDialog();
       await loadEntries();
     }
   } catch {
-    setStatus(modalStatus, 'No se pudo guardar el acceso. Revisa tu conexión.', 'error');
+    setStatus(modalStatus, 'No se pudo guardar. Revisa tu conexión.', 'error');
   } finally {
     submitButton.disabled = false;
   }
