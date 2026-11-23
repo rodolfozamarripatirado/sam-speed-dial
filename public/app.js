@@ -1008,11 +1008,17 @@ groupDialogForm.addEventListener('submit', async (event) => {
   groupDialogSubmit.disabled = true;
   setStatus(groupDialogStatus, 'Agrupando…');
 
+  // Si el servidor no contesta, el botón vuelve a estar disponible en vez de
+  // quedarse en «Agrupando…» para siempre.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+
   try {
     const response = await fetch('/api/folders', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name, entryIds: orderedSelectedIds() }),
+      signal: controller.signal,
     });
     const data = await response.json().catch(() => ({}));
 
@@ -1024,9 +1030,18 @@ groupDialogForm.addEventListener('submit', async (event) => {
     closeModal(groupDialog);
     setSelecting(false);
     await loadEntries();
-  } catch {
-    setStatus(groupDialogStatus, 'No se pudo agrupar. Revisa tu conexión.', 'error');
+  } catch (error) {
+    // Aun sin respuesta puede haberse guardado: se recarga la lista para verlo.
+    await loadEntries().catch(() => {});
+    setStatus(
+      groupDialogStatus,
+      error?.name === 'AbortError'
+        ? 'La operación tardó demasiado y se canceló. Revisa tu conexión e inténtalo de nuevo.'
+        : 'No se pudo agrupar. Revisa tu conexión.',
+      'error',
+    );
   } finally {
+    clearTimeout(timeout);
     groupDialogSubmit.disabled = false;
   }
 });
