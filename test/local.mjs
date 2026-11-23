@@ -267,6 +267,78 @@ await check('al eliminar la entrada se borra también su imagen', async () => {
   assert.equal((await call(env, target.imageUrl)).status, 404, 'la imagen debe quedar eliminada');
 });
 
+await check('PATCH cambia título, URL, grupo y reemplaza la imagen', async () => {
+  const created = await call(env, '/api/entries', {
+    method: 'POST',
+    body: multipart({
+      title: 'Editable',
+      url: 'https://editable.example.com',
+      image: new File([PNG], 'a.png', { type: 'image/png' }),
+    }),
+  });
+  assert.equal(created.status, 201);
+  const first = (await created.json()).entry;
+  const previousImage = first.imageUrl;
+
+  const patched = await call(env, `/api/entries/${first.id}`, {
+    method: 'PATCH',
+    body: multipart({
+      title: 'Editable 2',
+      url: 'https://editable.example.com/v2',
+      groupName: 'Operación',
+      image: new File([PNG], 'b.png', { type: 'image/png' }),
+    }),
+  });
+
+  assert.equal(patched.status, 200);
+  const body = await patched.json();
+  assert.equal(body.entry.title, 'Editable 2');
+  assert.equal(body.entry.url, 'https://editable.example.com/v2');
+  assert.ok(body.entry.groupId !== null);
+  assert.notEqual(body.entry.imageUrl, previousImage);
+  assert.equal((await call(env, previousImage)).status, 404, 'la imagen anterior debe borrarse');
+  assert.equal((await call(env, body.entry.imageUrl)).status, 200);
+});
+
+await check('PATCH con removeImage quita la imagen y deja la tarjeta', async () => {
+  const { entries } = await fetchAll(env);
+  const target = entries.find((entry) => entry.title === 'Editable 2');
+  assert.ok(target.imageUrl);
+
+  const patched = await call(env, `/api/entries/${target.id}`, {
+    method: 'PATCH',
+    body: multipart({ title: 'Editable 2', url: 'https://editable.example.com/v2', removeImage: '1' }),
+  });
+
+  assert.equal(patched.status, 200);
+  const body = await patched.json();
+  assert.equal(body.entry.imageUrl, null);
+  assert.equal((await call(env, target.imageUrl)).status, 404);
+});
+
+await check('PATCH valida los datos y responde 404 si no existe', async () => {
+  const { entries } = await fetchAll(env);
+  const target = entries[0];
+
+  const missing = await call(env, '/api/entries/999999', {
+    method: 'PATCH',
+    body: multipart({ title: 'Fantasma', url: 'https://fantasma.example.com' }),
+  });
+  assert.equal(missing.status, 404);
+
+  const invalid = await call(env, `/api/entries/${target.id}`, {
+    method: 'PATCH',
+    body: multipart({ title: 'Malo', url: 'javascript:alert(1)' }),
+  });
+  assert.equal(invalid.status, 400);
+
+  const emptyTitle = await call(env, `/api/entries/${target.id}`, {
+    method: 'PATCH',
+    body: multipart({ title: '   ', url: 'https://ok.example.com' }),
+  });
+  assert.equal(emptyTitle.status, 400);
+});
+
 await check('las altas concurrentes no se sobrescriben', async () => {
   const before = await fetchAll(env);
   const responses = await Promise.all(
