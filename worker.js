@@ -1,7 +1,7 @@
 /**
- * SAM Speed Dial — primera rebanada (SAM-SD-001) + grupos e imágenes.
+ * SAM Speed Dial — primera rebanada (SAM-SD-001) + grupos, imágenes e importación.
  *
- * API sobre Cloudflare D1: listar, agregar y eliminar accesos agrupados.
+ * API sobre Cloudflare D1: listar, agregar, editar y eliminar accesos agrupados.
  * Las imágenes viven en un bucket R2 y se sirven por /api/images/:key.
  * Sin secretos en el cliente: base de datos y bucket son bindings del Worker.
  */
@@ -321,6 +321,51 @@ async function createEntry(env, input) {
   return toEntry(row);
 }
 
+async function updateEntry(env, id, payload) {
+  const existing = await env.DB.prepare('SELECT id, image_key FROM entries WHERE id = ?').bind(id).first();
+  if (!existing) throw new HttpError(404, 'Ese acceso ya no existe.');
+
+  const title = validateTitle(payload.title);
+  const url = validateUrl(payload.url);
+  const groupId = await resolveGroupId(env, payload.groupName);
+
+  let imageKey = existing.image_key ?? null;
+  let newImageKey = null;
+
+  if (payload.image) {
+    newImageKey = await storeImage(env, payload.image);
+    imageKey = newImageKey;
+  } else if (payload.removeImage) {
+    imageKey = null;
+  }
+
+  let row;
+  try {
+    row = await env.DB
+      .prepare(
+        `UPDATE entries
+         SET title = ?, url = ?, group_id = ?, image_key = ?
+         WHERE id = ?
+         RETURNING id, title, url, position, created_at, group_id, image_key`,
+      )
+      .bind(title, url, groupId, imageKey, id)
+      .first();
+  } catch (error) {
+    if (newImageKey && env.FILES) {
+      await env.FILES.delete(newImageKey).catch(() => {});
+    }
+    throw error;
+  }
+
+  const previousKey = existing.image_key;
+  if (previousKey && previousKey !== imageKey && env.FILES) {
+    await env.FILES.delete(previousKey).catch(() => {});
+  }
+
+  if (!row) throw new Error('La entrada no se pudo recuperar después de actualizarla.');
+  return toEntry(row);
+}
+
 async function deleteEntry(env, id) {
   const existing = await env.DB.prepare('SELECT image_key FROM entries WHERE id = ?').bind(id).first();
 
@@ -354,6 +399,7 @@ async function readPayload(request) {
       url: form.get('url'),
       groupName: form.get('groupName'),
       image: form.get('image'),
+      removeImage: form.get('removeImage') === '1',
     };
   }
 
@@ -370,6 +416,7 @@ async function readPayload(request) {
     url: input.url,
     groupName: payload.groupName ?? null,
     image: null,
+    removeImage: payload.removeImage === true,
   };
 }
 
@@ -439,9 +486,21 @@ async function handleApi(request, env, path) {
 
   const match = path.match(/^\/api\/entries\/([1-9][0-9]{0,17})$/);
   if (match) {
-    if (request.method !== 'DELETE') throw new HttpError(405, 'Método no permitido.');
-    await deleteEntry(env, Number(match[1]));
-    return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
+    const id = Number(match[1]);
+
+    if (request.method === 'DELETE') {
+      await deleteEntry(env, id);
+      return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
+    }
+
+    if (request.method === 'PATCH' || request.method === 'PUT') {
+      const payload = await readPayload(request);
+      const entry = await updateEntry(env, id, payload);
+      const groups = await listGroups(env);
+      return jsonResponse({ entry, groups });
+    }
+
+    throw new HttpError(405, 'Método no permitido.');
   }
 
   throw new HttpError(404, 'Recurso no encontrado.');
