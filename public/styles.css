@@ -18,6 +18,12 @@
   box-sizing: border-box;
 }
 
+/* Los elementos ocultos por el HTML (barra de selección, vista previa…) no
+   deben mostrarse aunque tengan un `display` propio. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -40,8 +46,30 @@ body {
   margin-inline: auto;
 }
 
-.site-header {
-  padding: 4.5rem 0 2.75rem;
+.site-footer {
+  margin-top: 3.5rem;
+  padding: 2.5rem 0 4rem;
+  border-top: 1px solid var(--border);
+}
+
+.site-footer .eyebrow {
+  margin-bottom: 0.5rem;
+}
+
+.site-footer h1 {
+  font-size: clamp(1.6rem, 3vw, 2rem);
+}
+
+.site-footer .lede {
+  margin-top: 0.6rem;
+  font-size: 0.95rem;
+}
+
+.footnote {
+  margin: 1.4rem 0 0;
+  max-width: 62ch;
+  font-size: 0.8rem;
+  color: #75819e;
 }
 
 .eyebrow {
@@ -511,17 +539,6 @@ h1 {
   color: var(--error);
 }
 
-footer {
-  padding: 3.5rem 0 4.5rem;
-  font-size: 0.82rem;
-  color: #75819e;
-}
-
-footer p {
-  margin: 0;
-  max-width: 62ch;
-}
-
 /* Modal */
 
 .modal {
@@ -794,17 +811,73 @@ select:focus-visible {
 }
 
 @media (max-width: 720px) {
-  .site-header {
-    padding: 2.75rem 0 1.75rem;
+  .wrap {
+    width: calc(100% - 1.2rem);
   }
 
+  .entries {
+    margin-top: 0.75rem;
+  }
+
+  .head-actions {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .grid-head {
+    margin-bottom: 0.7rem;
+  }
+
+  .count {
+    font-size: 0.78rem;
+  }
+
+  .btn-small {
+    padding: 0.34rem 0.55rem;
+    font-size: 0.74rem;
+  }
+
+  /* Tres columnas: una docena de tarjetas a la vista en un móvil normal. */
   .grid,
   .add-grid {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
+  .add-grid {
+    margin-bottom: 0.9rem;
   }
 
   .tile-add {
-    min-height: 120px;
+    min-height: 0;
+    gap: 0.2rem;
+    padding: 0.3rem;
+  }
+
+  .tile-add-label {
+    display: none;
+  }
+
+  .tile-add-plus {
+    font-size: 1.5rem;
+  }
+
+  .tile-link {
+    border-radius: 10px;
+  }
+
+  .group-block + .group-block {
+    margin-top: 1.4rem;
+  }
+
+  .group-title {
+    margin-bottom: 0.5rem;
+    font-size: 0.72rem;
+  }
+
+  .site-footer {
+    margin-top: 2.5rem;
+    padding: 2rem 0 3rem;
   }
 
   .modal-folder {
