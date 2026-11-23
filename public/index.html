@@ -32,8 +32,13 @@
       <section class="entries" aria-labelledby="entries-heading">
         <div class="grid-head">
           <h2 id="entries-heading">Accesos</h2>
-          <span id="count" class="count"></span>
+          <div class="head-actions">
+            <span id="count" class="count"></span>
+            <button type="button" class="btn-ghost btn-small" id="import-bookmarks">Importar bookmarks</button>
+            <input id="import-file" type="file" accept=".html,text/html" hidden />
+          </div>
         </div>
+        <p id="import-status" class="status" role="status" aria-live="polite"></p>
 
         <div class="add-grid">
           <button type="button" class="tile-add" id="open-add">
@@ -45,7 +50,7 @@
         <div id="sections"></div>
 
         <p id="empty" class="empty" hidden>
-          Todavía no hay accesos. Usa la tarjeta + para agregar el primero.
+          Todavía no hay accesos. Usa la tarjeta + para agregar el primero o importa tu archivo de bookmarks.
         </p>
         <p id="load-error" class="empty empty-error" hidden>
           No se pudieron cargar los accesos. Revisa tu conexión y recarga la página.
@@ -55,8 +60,8 @@
 
     <footer class="wrap">
       <p>
-        Primera rebanada del PoC según SAM-SD-001. Los accesos iniciales son de ejemplo: elimínalos cuando
-        cargues tu export de Opera.
+        Primera rebanada del PoC según SAM-SD-001. La importación lee el archivo en tu navegador: el export
+        original no se sube ni se modifica.
       </p>
     </footer>
 
@@ -120,6 +125,7 @@
               <button type="button" class="image-clear" id="clear-image">Quitar imagen</button>
             </div>
             <p class="hint">Se recorta al tamaño de la tarjeta. PNG, JPG, WEBP o GIF hasta 2 MB.</p>
+            <p class="hint">Puedes cambiar la imagen de una tarjeta cuando quieras con el botón ✎.</p>
           </div>
         </div>
 
@@ -127,7 +133,7 @@
 
         <div class="modal-actions">
           <button type="button" class="btn-ghost" id="cancel-add">Cancelar</button>
-          <button type="submit" class="btn-primary">Guardar</button>
+          <button type="submit" class="btn-primary" id="submit-entry">Guardar</button>
         </div>
       </form>
     </dialog>
