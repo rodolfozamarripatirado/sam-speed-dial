@@ -41,7 +41,10 @@ const TABLE_STATEMENTS = [
      position INTEGER NOT NULL,
      created_at TEXT NOT NULL,
      group_id INTEGER,
-     image_key TEXT
+     image_key TEXT,
+     parent_id INTEGER,
+     is_folder INTEGER NOT NULL DEFAULT 0,
+     span INTEGER NOT NULL DEFAULT 1
    )`,
   `CREATE TABLE IF NOT EXISTS entry_groups (
      id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,11 +63,15 @@ const TABLE_STATEMENTS = [
 const MIGRATION_STATEMENTS = [
   'ALTER TABLE entries ADD COLUMN group_id INTEGER',
   'ALTER TABLE entries ADD COLUMN image_key TEXT',
+  'ALTER TABLE entries ADD COLUMN parent_id INTEGER',
+  'ALTER TABLE entries ADD COLUMN is_folder INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE entries ADD COLUMN span INTEGER NOT NULL DEFAULT 1',
 ];
 
 const INDEX_STATEMENTS = [
   'CREATE INDEX IF NOT EXISTS entries_position_idx ON entries (position, id)',
   'CREATE INDEX IF NOT EXISTS entries_group_idx ON entries (group_id)',
+  'CREATE INDEX IF NOT EXISTS entries_parent_idx ON entries (parent_id)',
 ];
 
 class HttpError extends Error {
@@ -96,7 +103,26 @@ function toEntry(row) {
     createdAt: String(row.created_at),
     groupId: row.group_id === null || row.group_id === undefined ? null : Number(row.group_id),
     imageUrl: row.image_key ? `/api/images/${row.image_key}` : null,
+    parentId: row.parent_id === null || row.parent_id === undefined ? null : Number(row.parent_id),
+    isFolder: Number(row.is_folder ?? 0) === 1,
+    span: Number(row.span ?? 1) || 1,
   };
+}
+
+const MAX_CARDS_PER_FOLDER = 200;
+const SPAN_BY_NAME = { normal: 1, wide: 2, big: 3 };
+
+/**
+ * Tamaño de la tarjeta en la rejilla: 1 normal (1 columna), 2 ancha
+ * (2 columnas) y 3 grande (2 × 2).
+ */
+function spanFromValue(value, fallback = 1) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const key = String(value).trim().toLowerCase();
+  if (key in SPAN_BY_NAME) return SPAN_BY_NAME[key];
+  const numeric = Number(key);
+  if (numeric === 1 || numeric === 2 || numeric === 3) return numeric;
+  throw new HttpError(400, 'Tamaño de tarjeta no válido. Usa normal, wide o big.');
 }
 
 function toGroup(row) {
@@ -289,7 +315,7 @@ async function moveGroup(env, id, direction) {
 async function listEntries(env) {
   const { results } = await env.DB
     .prepare(
-      'SELECT id, title, url, position, created_at, group_id, image_key FROM entries ORDER BY position ASC, id ASC',
+      'SELECT id, title, url, position, created_at, group_id, image_key, parent_id, is_folder, span FROM entries ORDER BY position ASC, id ASC',
     )
     .all();
 
@@ -335,11 +361,11 @@ async function createEntry(env, input) {
   // simultáneas no se sobrescriban.
   const row = await env.DB
     .prepare(
-      `INSERT INTO entries (title, url, position, created_at, group_id, image_key)
-       VALUES (?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM entries), ?, ?, ?)
-       RETURNING id, title, url, position, created_at, group_id, image_key`,
+      `INSERT INTO entries (title, url, position, created_at, group_id, image_key, span)
+       VALUES (?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM entries), ?, ?, ?, ?)
+       RETURNING id, title, url, position, created_at, group_id, image_key, parent_id, is_folder, span`,
     )
-    .bind(input.title, input.url, new Date().toISOString(), input.groupId, input.imageKey)
+    .bind(input.title, input.url, new Date().toISOString(), input.groupId, input.imageKey, input.span ?? 1)
     .first();
 
   if (!row) throw new Error('La entrada no se pudo recuperar después de guardarla.');
@@ -347,12 +373,26 @@ async function createEntry(env, input) {
 }
 
 async function updateEntry(env, id, payload) {
-  const existing = await env.DB.prepare('SELECT id, image_key FROM entries WHERE id = ?').bind(id).first();
+  const existing = await env.DB
+    .prepare('SELECT id, image_key, group_id, parent_id, is_folder, span FROM entries WHERE id = ?')
+    .bind(id)
+    .first();
   if (!existing) throw new HttpError(404, 'Ese acceso ya no existe.');
+  if (Number(existing.is_folder) === 1) {
+    throw new HttpError(400, 'Las tarjetas agrupadas se editan con su propio formulario.');
+  }
 
   const title = validateTitle(payload.title);
   const url = validateUrl(payload.url);
   const groupId = await resolveGroupId(env, payload.groupName);
+  const span = spanFromValue(payload.size, Number(existing.span ?? 1));
+
+  const previousGroupId =
+    existing.group_id === null || existing.group_id === undefined ? null : Number(existing.group_id);
+  let parentId =
+    existing.parent_id === null || existing.parent_id === undefined ? null : Number(existing.parent_id);
+  // Cambiar de grupo saca la tarjeta de la agrupación: su lugar es otro.
+  if (parentId !== null && groupId !== previousGroupId) parentId = null;
 
   let imageKey = existing.image_key ?? null;
   let newImageKey = null;
@@ -369,11 +409,11 @@ async function updateEntry(env, id, payload) {
     row = await env.DB
       .prepare(
         `UPDATE entries
-         SET title = ?, url = ?, group_id = ?, image_key = ?
+         SET title = ?, url = ?, group_id = ?, image_key = ?, span = ?, parent_id = ?
          WHERE id = ?
-         RETURNING id, title, url, position, created_at, group_id, image_key`,
+         RETURNING id, title, url, position, created_at, group_id, image_key, parent_id, is_folder, span`,
       )
-      .bind(title, url, groupId, imageKey, id)
+      .bind(title, url, groupId, imageKey, span, parentId, id)
       .first();
   } catch (error) {
     if (newImageKey && env.FILES) {
@@ -391,8 +431,137 @@ async function updateEntry(env, id, payload) {
   return toEntry(row);
 }
 
+async function createFolder(env, input) {
+  const name = validateTitle(input.name);
+  const ids = Array.isArray(input.entryIds) ? [...new Set(input.entryIds.map(Number))] : [];
+
+  if (ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+    throw new HttpError(400, 'Las tarjetas elegidas no son válidas.');
+  }
+  if (ids.length < 2) {
+    throw new HttpError(400, 'Elige al menos dos tarjetas para agruparlas.');
+  }
+  if (ids.length > MAX_CARDS_PER_FOLDER) {
+    throw new HttpError(400, `No se pueden agrupar más de ${MAX_CARDS_PER_FOLDER} tarjetas a la vez.`);
+  }
+
+  const placeholders = ids.map(() => '?').join(', ');
+  const { results } = await env.DB
+    .prepare(`SELECT id, group_id, parent_id, is_folder FROM entries WHERE id IN (${placeholders})`)
+    .bind(...ids)
+    .all();
+
+  const rows = results ?? [];
+  if (rows.length !== ids.length) {
+    throw new HttpError(404, 'Alguna de las tarjetas elegidas ya no existe.');
+  }
+  if (rows.some((row) => Number(row.is_folder) === 1)) {
+    throw new HttpError(400, 'Una tarjeta agrupada no se puede meter dentro de otra.');
+  }
+  if (rows.some((row) => row.parent_id !== null && row.parent_id !== undefined)) {
+    throw new HttpError(400, 'Alguna tarjeta ya está dentro de una agrupación. Sácala antes de agruparla de nuevo.');
+  }
+
+  // La agrupación hereda el grupo de la primera tarjeta elegida y el resto se
+  // mueve con ella para que no queden tarjetas sueltas por el camino.
+  const firstRow = rows.find((row) => Number(row.id) === ids[0]) ?? rows[0];
+  const groupId = firstRow.group_id === null || firstRow.group_id === undefined ? null : Number(firstRow.group_id);
+
+  const created = await env.DB
+    .prepare(
+      `INSERT INTO entries (title, url, position, created_at, group_id, image_key, parent_id, is_folder, span)
+       VALUES (?, '', (SELECT COALESCE(MAX(position), 0) + 1 FROM entries), ?, ?, NULL, NULL, 1, 1)
+       RETURNING id, title, url, position, created_at, group_id, image_key, parent_id, is_folder, span`,
+    )
+    .bind(name, new Date().toISOString(), groupId)
+    .first();
+
+  if (!created) throw new Error('La tarjeta agrupada no se pudo recuperar después de guardarla.');
+
+  try {
+    await env.DB.batch(
+      ids.map((id) =>
+        env.DB
+          .prepare('UPDATE entries SET parent_id = ?, group_id = ? WHERE id = ?')
+          .bind(Number(created.id), groupId, id),
+      ),
+    );
+  } catch (error) {
+    await env.DB.prepare('DELETE FROM entries WHERE id = ?').bind(Number(created.id)).run().catch(() => {});
+    throw error;
+  }
+
+  return toEntry(created);
+}
+
+async function updateFolder(env, id, payload) {
+  const existing = await env.DB
+    .prepare('SELECT id, group_id, is_folder, span FROM entries WHERE id = ?')
+    .bind(id)
+    .first();
+  if (!existing) throw new HttpError(404, 'Esa tarjeta agrupada ya no existe.');
+  if (Number(existing.is_folder) !== 1) throw new HttpError(400, 'Esa tarjeta no es una agrupación.');
+
+  const name = validateTitle(payload.name);
+  const groupId = await resolveGroupId(env, payload.groupName);
+  const span = spanFromValue(payload.size, Number(existing.span ?? 1));
+
+  const row = await env.DB
+    .prepare(
+      `UPDATE entries SET title = ?, group_id = ?, span = ? WHERE id = ?
+       RETURNING id, title, url, position, created_at, group_id, image_key, parent_id, is_folder, span`,
+    )
+    .bind(name, groupId, span, id)
+    .first();
+
+  if (!row) throw new Error('La tarjeta agrupada no se pudo recuperar después de actualizarla.');
+
+  // El contenido acompaña a la agrupación cuando cambia de grupo.
+  await env.DB.prepare('UPDATE entries SET group_id = ? WHERE parent_id = ?').bind(groupId, id).run();
+
+  return toEntry(row);
+}
+
+/**
+ * Mueve una tarjeta una posición dentro de su misma rejilla (su grupo y, si
+ * está dentro de una agrupación, junto a sus hermanas).
+ */
+async function moveEntry(env, id, direction) {
+  const row = await env.DB.prepare('SELECT id, parent_id, group_id FROM entries WHERE id = ?').bind(id).first();
+  if (!row) throw new HttpError(404, 'Esa tarjeta ya no existe.');
+
+  const parentId = row.parent_id === null || row.parent_id === undefined ? null : Number(row.parent_id);
+  const groupId = row.group_id === null || row.group_id === undefined ? null : Number(row.group_id);
+
+  const { results } = await env.DB
+    .prepare('SELECT id, position FROM entries WHERE parent_id IS ? AND group_id IS ? ORDER BY position ASC, id ASC')
+    .bind(parentId, groupId)
+    .all();
+
+  const siblings = results ?? [];
+  const index = siblings.findIndex((sibling) => Number(sibling.id) === id);
+  if (index === -1) throw new HttpError(404, 'Esa tarjeta ya no existe.');
+
+  const target = direction === 'up' ? index - 1 : index + 1;
+  if (target < 0 || target >= siblings.length) return;
+
+  const current = siblings[index];
+  const other = siblings[target];
+
+  await env.DB.batch([
+    env.DB.prepare('UPDATE entries SET position = ? WHERE id = ?').bind(Number(other.position), Number(current.id)),
+    env.DB.prepare('UPDATE entries SET position = ? WHERE id = ?').bind(Number(current.position), Number(other.id)),
+  ]);
+}
+
 async function deleteEntry(env, id) {
-  const existing = await env.DB.prepare('SELECT image_key FROM entries WHERE id = ?').bind(id).first();
+  const existing = await env.DB.prepare('SELECT image_key, is_folder FROM entries WHERE id = ?').bind(id).first();
+
+  // Borrar una tarjeta agrupada no borra su contenido: las tarjetas vuelven a
+  // su grupo, que es lo que espera quien deshace una agrupación.
+  if (Number(existing?.is_folder ?? 0) === 1) {
+    await env.DB.prepare('UPDATE entries SET parent_id = NULL WHERE parent_id = ?').bind(id).run();
+  }
 
   const result = await env.DB.prepare('DELETE FROM entries WHERE id = ?').bind(id).run();
   if ((result?.meta?.changes ?? 0) === 0) {
@@ -423,6 +592,7 @@ async function readPayload(request) {
       title: form.get('title'),
       url: form.get('url'),
       groupName: form.get('groupName'),
+      size: form.get('size'),
       image: form.get('image'),
       removeImage: form.get('removeImage') === '1',
     };
@@ -440,9 +610,35 @@ async function readPayload(request) {
     title: input.title,
     url: input.url,
     groupName: payload.groupName ?? null,
+    size: payload.size,
     image: null,
     removeImage: payload.removeImage === true,
   };
+}
+
+async function readFolderPayload(request) {
+  const contentType = request.headers.get('content-type') ?? '';
+
+  if (contentType.includes('multipart/form-data')) {
+    let form;
+    try {
+      form = await request.formData();
+    } catch {
+      throw new HttpError(400, 'No se pudo leer el formulario.');
+    }
+    return { name: form.get('name'), groupName: form.get('groupName'), size: form.get('size') };
+  }
+
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    throw new HttpError(400, 'El cuerpo de la petición no es JSON válido.');
+  }
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new HttpError(400, 'El cuerpo de la petición debe ser un objeto JSON.');
+  }
+  return { name: payload.name, groupName: payload.groupName ?? null, size: payload.size };
 }
 
 async function serveImage(env, key) {
@@ -486,7 +682,13 @@ async function handleApi(request, env, path) {
       let entry;
       try {
         groupId = await resolveGroupId(env, payload.groupName);
-        entry = await createEntry(env, { title, url, groupId, imageKey });
+        entry = await createEntry(env, {
+          title,
+          url,
+          groupId,
+          imageKey,
+          span: spanFromValue(payload.size, 1),
+        });
       } catch (error) {
         if (imageKey && env.FILES) {
           await env.FILES.delete(imageKey).catch(() => {});
@@ -507,6 +709,57 @@ async function handleApi(request, env, path) {
       throw new HttpError(405, 'Método no permitido.');
     }
     return serveImage(env, imageMatch[1]);
+  }
+
+  if (path === '/api/folders') {
+    if (request.method !== 'POST') {
+      throw new HttpError(405, 'Método no permitido.');
+    }
+
+    let payload;
+    try {
+      payload = await request.json();
+    } catch {
+      throw new HttpError(400, 'El cuerpo de la petición no es JSON válido.');
+    }
+
+    const folder = await createFolder(env, { name: payload?.name, entryIds: payload?.entryIds });
+    const [entries, groups] = await Promise.all([listEntries(env), listGroups(env)]);
+    return jsonResponse({ folder, entries, groups }, 201);
+  }
+
+  const folderMatch = path.match(/^\/api\/folders\/([1-9][0-9]{0,17})$/);
+  if (folderMatch) {
+    if (request.method !== 'PATCH' && request.method !== 'PUT') {
+      throw new HttpError(405, 'Método no permitido.');
+    }
+
+    const payload = await readFolderPayload(request);
+    const folder = await updateFolder(env, Number(folderMatch[1]), payload);
+    const [entries, groups] = await Promise.all([listEntries(env), listGroups(env)]);
+    return jsonResponse({ folder, entries, groups });
+  }
+
+  const moveMatch = path.match(/^\/api\/entries\/([1-9][0-9]{0,17})\/move$/);
+  if (moveMatch) {
+    if (request.method !== 'PATCH' && request.method !== 'POST') {
+      throw new HttpError(405, 'Método no permitido.');
+    }
+
+    let payload;
+    try {
+      payload = await request.json();
+    } catch {
+      throw new HttpError(400, 'El cuerpo de la petición no es JSON válido.');
+    }
+
+    const direction = payload?.direction;
+    if (direction !== 'up' && direction !== 'down') {
+      throw new HttpError(400, "Indica la dirección: 'up' o 'down'.");
+    }
+
+    await moveEntry(env, Number(moveMatch[1]), direction);
+    return jsonResponse({ entries: await listEntries(env) });
   }
 
   const groupMatch = path.match(/^\/api\/groups\/([1-9][0-9]{0,17})$/);
