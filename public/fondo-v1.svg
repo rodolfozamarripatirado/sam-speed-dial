@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice" width="1600" height="1000">
+  <defs>
+    <radialGradient id="aura-azul" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#5b7cff" stop-opacity="0.55"/>
+      <stop offset="60%" stop-color="#3b57d8" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#3b57d8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="aura-turquesa" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#3fe0c5" stop-opacity="0.42"/>
+      <stop offset="65%" stop-color="#1fa9a0" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#1fa9a0" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="aura-violeta" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#a97cff" stop-opacity="0.45"/>
+      <stop offset="60%" stop-color="#6d43c9" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#6d43c9" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="aura-dorado" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffc46b" stop-opacity="0.3"/>
+      <stop offset="70%" stop-color="#c98a2c" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#c98a2c" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="suave" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#suave)">
+    <ellipse cx="300" cy="240" rx="430" ry="330" fill="url(#aura-azul)">
+      <animateTransform attributeName="transform" type="translate" values="0 0; 90 60; -40 110; 0 0" dur="26s" repeatCount="indefinite"/>
+    </ellipse>
+    <ellipse cx="1250" cy="300" rx="380" ry="300" fill="url(#aura-turquesa)">
+      <animateTransform attributeName="transform" type="translate" values="0 0; -110 70; 30 -60; 0 0" dur="31s" repeatCount="indefinite"/>
+    </ellipse>
+    <ellipse cx="800" cy="850" rx="520" ry="300" fill="url(#aura-violeta)">
+      <animateTransform attributeName="transform" type="translate" values="0 0; 70 -90; -80 -30; 0 0" dur="36s" repeatCount="indefinite"/>
+    </ellipse>
+    <ellipse cx="1450" cy="880" rx="300" ry="240" fill="url(#aura-dorado)">
+      <animateTransform attributeName="transform" type="translate" values="0 0; -70 -50; 60 30; 0 0" dur="29s" repeatCount="indefinite"/>
+    </ellipse>
+  </g>
+
+  <g fill="#dfe8ff">
+    <circle cx="180" cy="140" r="2.4"><animate attributeName="opacity" values="0.15; 0.9; 0.15" dur="6s" repeatCount="indefinite"/></circle>
+    <circle cx="520" cy="90" r="1.8"><animate attributeName="opacity" values="0.8; 0.2; 0.8" dur="7.5s" repeatCount="indefinite"/></circle>
+    <circle cx="940" cy="170" r="2.1"><animate attributeName="opacity" values="0.2; 0.85; 0.2" dur="9s" repeatCount="indefinite"/></circle>
+    <circle cx="1330" cy="120" r="1.6"><animate attributeName="opacity" values="0.85; 0.25; 0.85" dur="8s" repeatCount="indefinite"/></circle>
+    <circle cx="1500" cy="520" r="2.2"><animate attributeName="opacity" values="0.2; 0.8; 0.2" dur="10s" repeatCount="indefinite"/></circle>
+    <circle cx="1180" cy="640" r="1.7"><animate attributeName="opacity" values="0.75; 0.15; 0.75" dur="6.5s" repeatCount="indefinite"/></circle>
+    <circle cx="420" cy="700" r="2"><animate attributeName="opacity" values="0.15; 0.7; 0.15" dur="8.5s" repeatCount="indefinite"/></circle>
+    <circle cx="260" cy="880" r="1.5"><animate attributeName="opacity" values="0.7; 0.2; 0.7" dur="7s" repeatCount="indefinite"/></circle>
+    <circle cx="740" cy="470" r="1.9"><animate attributeName="opacity" values="0.2; 0.75; 0.2" dur="11s" repeatCount="indefinite"/></circle>
+    <circle cx="1020" cy="900" r="2.3"><animate attributeName="opacity" values="0.7; 0.1; 0.7" dur="9.5s" repeatCount="indefinite"/></circle>
+  </g>
+</svg>
