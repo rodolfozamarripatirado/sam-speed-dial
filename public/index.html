@@ -6,10 +6,14 @@
     <meta name="color-scheme" content="dark" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'"
+      content="default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'"
     />
     <meta name="referrer" content="no-referrer" />
     <title>Speed Dial — SAM</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d1220'/%3E%3Crect x='13' y='13' width='16' height='16' rx='5' fill='%238ba7ff'/%3E%3Crect x='35' y='13' width='16' height='16' rx='5' fill='%239be3c7'/%3E%3Crect x='13' y='35' width='16' height='16' rx='5' fill='%23ffd58f'/%3E%3Crect x='35' y='35' width='16' height='16' rx='5' fill='%23c9b0ff'/%3E%3C/svg%3E"
+    />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -25,9 +29,45 @@
     </header>
 
     <main class="wrap">
-      <section class="composer" aria-labelledby="add-heading">
-        <h2 id="add-heading">Agregar acceso</h2>
-        <form id="add-form" novalidate>
+      <section class="entries" aria-labelledby="entries-heading">
+        <div class="grid-head">
+          <h2 id="entries-heading">Accesos</h2>
+          <span id="count" class="count"></span>
+        </div>
+
+        <div class="add-grid">
+          <button type="button" class="tile-add" id="open-add">
+            <span class="tile-add-plus" aria-hidden="true">+</span>
+            <span class="tile-add-label">Agregar sitio</span>
+          </button>
+        </div>
+
+        <div id="sections"></div>
+
+        <p id="empty" class="empty" hidden>
+          Todavía no hay accesos. Usa la tarjeta + para agregar el primero.
+        </p>
+        <p id="load-error" class="empty empty-error" hidden>
+          No se pudieron cargar los accesos. Revisa tu conexión y recarga la página.
+        </p>
+      </section>
+    </main>
+
+    <footer class="wrap">
+      <p>
+        Primera rebanada del PoC según SAM-SD-001. Los accesos iniciales son de ejemplo: elimínalos cuando
+        cargues tu export de Opera.
+      </p>
+    </footer>
+
+    <dialog id="add-dialog" class="modal" aria-labelledby="modal-title">
+      <form id="add-form" novalidate>
+        <div class="modal-head">
+          <h2 id="modal-title">Nuevo acceso</h2>
+          <button type="button" class="modal-close" id="close-add" aria-label="Cerrar">×</button>
+        </div>
+
+        <div class="modal-body">
           <div class="field">
             <label for="title">Título</label>
             <input
@@ -40,6 +80,7 @@
               required
             />
           </div>
+
           <div class="field">
             <label for="url">URL</label>
             <input
@@ -54,30 +95,42 @@
               required
             />
           </div>
-          <button type="submit" class="btn-primary">Agregar</button>
-        </form>
-        <p id="form-status" class="status" role="status" aria-live="polite"></p>
-      </section>
 
-      <section class="entries" aria-labelledby="entries-heading">
-        <div class="grid-head">
-          <h2 id="entries-heading">Accesos</h2>
-          <span id="count" class="count"></span>
+          <div class="field">
+            <label for="group-select">Grupo</label>
+            <select id="group-select" name="group-select">
+              <option value="">Sin grupo</option>
+            </select>
+            <input
+              id="group-name"
+              name="group-name"
+              type="text"
+              maxlength="60"
+              autocomplete="off"
+              placeholder="Nombre del grupo nuevo"
+              hidden
+            />
+          </div>
+
+          <div class="field">
+            <label for="image">Imagen (opcional)</label>
+            <input id="image" name="image" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
+            <div class="image-preview" id="image-preview" hidden>
+              <img id="image-preview-img" alt="Vista previa de la imagen elegida" />
+              <button type="button" class="image-clear" id="clear-image">Quitar imagen</button>
+            </div>
+            <p class="hint">Se recorta al tamaño de la tarjeta. PNG, JPG, WEBP o GIF hasta 2 MB.</p>
+          </div>
         </div>
-        <ul id="grid" class="grid"></ul>
-        <p id="empty" class="empty" hidden> Todavía no hay accesos. Agrega el primero aquí arriba. </p>
-        <p id="load-error" class="empty empty-error" hidden>
-          No se pudieron cargar los accesos. Revisa tu conexión y recarga la página.
-        </p>
-      </section>
-    </main>
 
-    <footer class="wrap">
-      <p>
-        Primera rebanada del PoC según SAM-SD-001. Los accesos iniciales son de ejemplo: elimínalos cuando
-        cargues tu export de Opera.
-      </p>
-    </footer>
+        <p id="modal-status" class="status" role="status" aria-live="polite"></p>
+
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" id="cancel-add">Cancelar</button>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+      </form>
+    </dialog>
 
     <script src="/app.js" type="module"></script>
   </body>
