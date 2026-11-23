@@ -10,6 +10,7 @@ const MAX_TITLE = 120;
 const MAX_URL = 2048;
 const MAX_GROUP_NAME = 60;
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const FONDO_PATH = '/fondo-v1.svg';
 
 const IMAGE_EXT = {
   'image/png': 'png',
@@ -809,6 +810,17 @@ async function handleApi(request, env, path) {
 async function handleRequest(request, env) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
+
+  // El fondo animado se sirve una sola vez: el navegador guarda su copia
+  // durante un año y en las siguientes visitas no lo vuelve a descargar.
+  if (path === FONDO_PATH) {
+    const asset = await env.ASSETS.fetch(request);
+    if (!asset.ok) return asset;
+    const headers = new Headers(asset.headers);
+    headers.set('cache-control', 'public, max-age=31536000, immutable');
+    headers.set('x-content-type-options', 'nosniff');
+    return new Response(asset.body, { status: asset.status, headers });
+  }
 
   if (!path.startsWith('/api/')) {
     return env.ASSETS.fetch(request);
