@@ -78,6 +78,9 @@ function buildTile(entry) {
   link.target = '_blank';
   link.rel = 'noopener noreferrer';
   link.referrerPolicy = 'no-referrer';
+  // La tarjeta es solo la imagen: el nombre y el dominio viven en el tooltip.
+  link.title = `${entry.title} — ${host}`;
+  link.setAttribute('aria-label', `${entry.title} (${host})`);
 
   const media = document.createElement('span');
   media.className = 'tile-media';
@@ -98,15 +101,7 @@ function buildTile(entry) {
     media.append(icon);
   }
 
-  const title = document.createElement('span');
-  title.className = 'tile-title';
-  title.textContent = entry.title;
-
-  const hostLabel = document.createElement('span');
-  hostLabel.className = 'tile-host';
-  hostLabel.textContent = host;
-
-  link.append(media, title, hostLabel);
+  link.append(media);
 
   const actions = document.createElement('div');
   actions.className = 'tile-actions';
@@ -130,19 +125,45 @@ function buildTile(entry) {
   return item;
 }
 
-function buildSection(group, items) {
+function buildSection(group, items, { isFirst = false, isLast = false } = {}) {
   const wrapper = document.createElement('section');
   wrapper.className = 'group-block';
 
   if (group) {
     const heading = document.createElement('h3');
     heading.className = 'group-title';
-    heading.textContent = group.name;
+
+    const name = document.createElement('span');
+    name.className = 'group-name';
+    name.textContent = group.name;
 
     const total = document.createElement('span');
     total.className = 'group-count';
     total.textContent = items.length === 1 ? '1 acceso' : `${items.length} accesos`;
-    heading.append(total);
+
+    const actions = document.createElement('span');
+    actions.className = 'group-actions';
+
+    const up = document.createElement('button');
+    up.type = 'button';
+    up.className = 'group-move';
+    up.textContent = '↑';
+    up.title = 'Mover este grupo antes';
+    up.setAttribute('aria-label', `Mover el grupo ${group.name} antes`);
+    up.disabled = isFirst;
+    up.addEventListener('click', () => moveGroup(group, 'up'));
+
+    const down = document.createElement('button');
+    down.type = 'button';
+    down.className = 'group-move';
+    down.textContent = '↓';
+    down.title = 'Mover este grupo después';
+    down.setAttribute('aria-label', `Mover el grupo ${group.name} después`);
+    down.disabled = isLast;
+    down.addEventListener('click', () => moveGroup(group, 'down'));
+
+    actions.append(up, down);
+    heading.append(name, total, actions);
 
     wrapper.append(heading);
   }
@@ -169,13 +190,21 @@ function render() {
     grouped.get(entry.groupId).push(entry);
   }
 
+  const orderedGroups = [...groups].sort((a, b) => a.position - b.position || a.id - b.id);
+
   const blocks = [];
   if (ungrouped.length > 0) blocks.push(buildSection(null, ungrouped));
 
-  for (const group of [...groups].sort((a, b) => a.position - b.position || a.id - b.id)) {
+  orderedGroups.forEach((group, index) => {
     const items = grouped.get(group.id);
-    if (items && items.length > 0) blocks.push(buildSection(group, items));
-  }
+    if (!items || items.length === 0) return;
+    blocks.push(
+      buildSection(group, items, {
+        isFirst: index === 0,
+        isLast: index === orderedGroups.length - 1,
+      }),
+    );
+  });
 
   sections.replaceChildren(...blocks);
   emptyState.hidden = sortedEntries.length > 0;
@@ -208,6 +237,26 @@ async function removeEntry(entry) {
     render();
   } catch {
     window.alert('No se pudo eliminar el acceso. Intenta de nuevo.');
+  }
+}
+
+async function moveGroup(group, direction) {
+  try {
+    const response = await fetch(`/api/groups/${encodeURIComponent(group.id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ direction }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !Array.isArray(data.groups)) {
+      throw new Error('no se pudo mover el grupo');
+    }
+
+    groups = data.groups;
+    render();
+  } catch {
+    window.alert('No se pudo mover el grupo. Intenta de nuevo.');
   }
 }
 
