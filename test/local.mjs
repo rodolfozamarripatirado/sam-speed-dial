@@ -490,6 +490,200 @@ await check('una caída de la base devuelve 503 genérico', async () => {
   }
 });
 
+await check('agrupa varias tarjetas en una tarjeta con contenido', async () => {
+  const first = await call(env, '/api/entries', {
+    method: 'POST',
+    body: multipart({ title: 'Curso A', url: 'https://curso-a.example.com', groupName: 'Educación' }),
+  });
+  const a = (await first.json()).entry;
+
+  const second = await call(env, '/api/entries', {
+    method: 'POST',
+    body: multipart({ title: 'Curso B', url: 'https://curso-b.example.com', groupName: 'Educación' }),
+  });
+  const b = (await second.json()).entry;
+
+  const response = await call(env, '/api/folders', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Educación', entryIds: [b.id, a.id] }),
+  });
+  assert.equal(response.status, 201);
+
+  const body = await response.json();
+  assert.equal(body.folder.isFolder, true);
+  assert.equal(body.folder.title, 'Educación');
+  assert.equal(body.folder.span, 1);
+  assert.equal(body.folder.parentId, null);
+  assert.ok(body.folder.groupId !== null, 'la tarjeta agrupada hereda el grupo');
+
+  const kids = body.entries.filter((entry) => entry.parentId === body.folder.id);
+  assert.deepEqual(
+    kids.map((entry) => entry.id).sort(),
+    [a.id, b.id].sort(),
+    'las dos tarjetas quedan adentro',
+  );
+  assert.ok(kids.every((entry) => entry.groupId === body.folder.groupId), 'el contenido sigue en el grupo');
+});
+
+await check('agrupar exige dos tarjetas existentes y que no sean agrupadas', async () => {
+  const { entries } = await fetchAll(env);
+  const plain = entries.find((entry) => !entry.isFolder && entry.parentId === null);
+  const other = entries.find((entry) => entry.id !== plain.id && !entry.isFolder && entry.parentId === null);
+  const folder = entries.find((entry) => entry.isFolder);
+
+  const one = await call(env, '/api/folders', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Una sola', entryIds: [plain.id] }),
+  });
+  assert.equal(one.status, 400);
+
+  const missing = await call(env, '/api/folders', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Fantasma', entryIds: [plain.id, 999999] }),
+  });
+  assert.equal(missing.status, 404);
+
+  const nested = await call(env, '/api/folders', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Anidada', entryIds: [plain.id, folder.id] }),
+  });
+  assert.equal(nested.status, 400);
+
+  const nameless = await call(env, '/api/folders', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: '   ', entryIds: [plain.id, other.id] }),
+  });
+  assert.equal(nameless.status, 400);
+});
+
+await check('una tarjeta se mueve dentro de su rejilla y el orden persiste', async () => {
+  const { entries } = await fetchAll(env);
+  const folder = entries.find((entry) => entry.isFolder);
+  const siblings = entries
+    .filter((entry) => entry.parentId === folder.id)
+    .sort((a, b) => a.position - b.position);
+  const last = siblings[siblings.length - 1];
+
+  const response = await call(env, `/api/entries/${last.id}/move`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ direction: 'up' }),
+  });
+  assert.equal(response.status, 200);
+
+  const body = await response.json();
+  const after = body.entries
+    .filter((entry) => entry.parentId === folder.id)
+    .sort((a, b) => a.position - b.position);
+  assert.equal(after[0].id, last.id, 'debe quedar primera dentro de la agrupación');
+
+  const invalid = await call(env, `/api/entries/${last.id}/move`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ direction: 'left' }),
+  });
+  assert.equal(invalid.status, 400);
+
+  const missing = await call(env, '/api/entries/999999/move', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ direction: 'up' }),
+  });
+  assert.equal(missing.status, 404);
+});
+
+await check('el tamaño de cada tarjeta se guarda y se valida', async () => {
+  const { entries } = await fetchAll(env);
+  const target = entries.find((entry) => !entry.isFolder && entry.parentId === null);
+
+  const patched = await call(env, `/api/entries/${target.id}`, {
+    method: 'PATCH',
+    body: multipart({ title: target.title, url: target.url, size: 'wide' }),
+  });
+  assert.equal(patched.status, 200);
+  assert.equal((await patched.json()).entry.span, 2);
+
+  const invalid = await call(env, `/api/entries/${target.id}`, {
+    method: 'PATCH',
+    body: multipart({ title: target.title, url: target.url, size: 'enorme' }),
+  });
+  assert.equal(invalid.status, 400);
+
+  const folder = entries.find((entry) => entry.isFolder);
+  const folderPatched = await call(env, `/api/folders/${folder.id}`, {
+    method: 'PATCH',
+    body: multipart({ name: 'Educación y cursos', groupName: 'Educación', size: 'big' }),
+  });
+  assert.equal(folderPatched.status, 200);
+
+  const folderBody = await folderPatched.json();
+  assert.equal(folderBody.folder.title, 'Educación y cursos');
+  assert.equal(folderBody.folder.span, 3);
+  assert.equal(folderBody.folder.groupId, folder.groupId);
+  assert.ok(folderBody.entries.filter((entry) => entry.parentId === folder.id).length >= 2);
+});
+
+await check('mover una tarjeta hija a otro grupo la saca de la agrupación', async () => {
+  const first = (await (
+    await call(env, '/api/entries', {
+      method: 'POST',
+      body: multipart({ title: 'Hija A', url: 'https://hija-a.example.com', groupName: 'Familia' }),
+    })
+  ).json()).entry;
+  const second = (await (
+    await call(env, '/api/entries', {
+      method: 'POST',
+      body: multipart({ title: 'Hija B', url: 'https://hija-b.example.com', groupName: 'Familia' }),
+    })
+  ).json()).entry;
+
+  const folderResponse = await call(env, '/api/folders', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Familia', entryIds: [first.id, second.id] }),
+  });
+  assert.equal(folderResponse.status, 201);
+  const folder = (await folderResponse.json()).folder;
+
+  const patched = await call(env, `/api/entries/${first.id}`, {
+    method: 'PATCH',
+    body: multipart({ title: first.title, url: first.url, groupName: 'Otra' }),
+  });
+  assert.equal(patched.status, 200);
+
+  const body = await patched.json();
+  assert.equal(body.entry.parentId, null);
+  assert.notEqual(body.entry.groupId, folder.groupId);
+
+  const rest = (await fetchAll(env)).entries.filter((entry) => entry.parentId === folder.id);
+  assert.equal(rest.length, 1);
+});
+
+await check('deshacer la agrupación devuelve las tarjetas al grupo sin borrarlas', async () => {
+  const before = await fetchAll(env);
+  const folder = before.entries.find((entry) => entry.isFolder);
+  const kids = before.entries.filter((entry) => entry.parentId === folder.id);
+  assert.ok(kids.length >= 1);
+
+  const response = await call(env, `/api/entries/${folder.id}`, { method: 'DELETE' });
+  assert.equal(response.status, 204);
+
+  const after = await fetchAll(env);
+  assert.equal(after.entries.some((entry) => entry.id === folder.id), false);
+
+  for (const kid of kids) {
+    const found = after.entries.find((entry) => entry.id === kid.id);
+    assert.ok(found, 'la tarjeta hija debe seguir existiendo');
+    assert.equal(found.parentId, null);
+    assert.equal(found.groupId, folder.groupId);
+  }
+});
+
 const failed = checks.filter((entry) => !entry.ok);
 console.log(`\n${checks.length - failed.length}/${checks.length} comprobaciones correctas`);
 process.exit(failed.length === 0 ? 0 : 1);
