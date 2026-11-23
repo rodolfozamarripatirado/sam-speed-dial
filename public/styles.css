@@ -327,7 +327,12 @@ h1 {
   font-weight: 800;
 }
 
+/* La barra acompaña al desplazamiento: con muchas tarjetas se eligen las de
+   más abajo y el botón de crear sigue a la vista. */
 .selection-bar {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 30;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -337,7 +342,9 @@ h1 {
   padding: 0.7rem 0.9rem;
   border: 1px solid var(--accent);
   border-radius: 12px;
-  background: rgba(79, 108, 240, 0.16);
+  background: rgba(21, 29, 54, 0.95);
+  box-shadow: 0 12px 32px rgba(4, 8, 18, 0.55);
+  backdrop-filter: blur(8px);
 }
 
 .selection-actions {
